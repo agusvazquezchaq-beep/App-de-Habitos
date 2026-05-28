@@ -141,7 +141,6 @@ if not mis_habitos:
 habitos = list(mis_habitos.keys())
 total_dias_sistema = len(df_habitos)
 
-# State para controlar cuándo mostrar los festejos/feedback reales (Punto 3)
 if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
@@ -155,7 +154,6 @@ with menu[0]:
     st.subheader("Registrar hábitos")
     fecha_sel = st.date_input("Fecha", value=datetime.now().date(), max_value=datetime.now().date())
     
-    # Si cambia la fecha del calendario, reseteamos el estado del feedback para que no salte viejo contenido
     if "ultima_fecha_vista" not in st.session_state or st.session_state.ultima_fecha_vista != fecha_sel:
         st.session_state.ultima_fecha_vista = fecha_sel
         st.session_state.mostrar_feedback = False
@@ -172,7 +170,6 @@ with menu[0]:
         
     habitos_fallados_vivos = [h for h, cumplido in chks.items() if not cumplido]
 
-    # PUNTO 3: Si hay fallos, los motivos se eligen ANTES de procesar el éxito del día
     respuestas_obstaculos = {}
     if habitos_fallados_vivos:
         st.markdown("---")
@@ -188,7 +185,6 @@ with menu[0]:
         for h in habitos_fallados_vivos:
             respuestas_obstaculos[h] = st.selectbox(f"Motivo para no hacer '{h}':", opciones_motivos, key=f"live_motivo_{h}_{fecha_sel}")
 
-    # UN SOLO BOTÓN DE GUARDADO: Evita ejecuciones intermedias y globos locos
     if st.button("💾 Confirmar y Guardar Todo el Día", type="primary"):
         dias_espanol = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves', 'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
         nombre_dia = dias_espanol[fecha_sel.strftime('%A')]
@@ -206,7 +202,6 @@ with menu[0]:
         else:
             supabase.table("historial_habitos").insert(payload).execute()
             
-        # Guardamos los obstáculos asociados de inmediato
         supabase.table("historial_obstaculos").delete().eq("user_id", user_id).eq("fecha", str(fecha_sel)).execute()
         for h, motivo in respuestas_obstaculos.items():
             supabase.table("historial_obstaculos").insert({
@@ -216,7 +211,6 @@ with menu[0]:
         st.session_state.mostrar_feedback = True
         st.rerun()
 
-    # BLOQUE DE RENDIMIENTO DEFINITIVO: Solo se dibuja si el usuario hizo clic en Guardar
     if st.session_state.mostrar_feedback:
         st.success("✅ Historial actualizado")
         
@@ -251,11 +245,9 @@ with menu[1]:
     else:
         df_limpio = df_habitos.copy()
         
-        # Filtrar días que fueron declarados puramente como DESCANSO (Mejora 6)
         fechas_descanso = []
         if not df_obstaculos.empty:
             df_solo_descansos = df_obstaculos[df_obstaculos['Categoria_Fallo'] == 'DESCANSO']
-            # Agrupamos por fecha para ver si todos los fallos de ese día fueron descanso
             for f, subdf in df_solo_descansos.groupby('Fecha'):
                 fallos_totales_dia = len(df_habitos[df_habitos['Fecha'] == f]) - int(df_habitos[df_habitos['Fecha'] == f][habitos].sum(axis=1).iloc[0])
                 if len(subdf) >= fallos_totales_dia:
@@ -269,7 +261,6 @@ with menu[1]:
         else:
             rendimiento_diario = df_limpio[habitos].mean(axis=1) * 100
             
-            # PUNTO 2: Algoritmo Estricto de Recovery Score (Castiga severamente las rachas largas de fallos)
             puntajes_rec = []
             i = 0
             n = len(rendimiento_diario)
@@ -279,29 +270,25 @@ with menu[1]:
                     while i < n and rendimiento_diario.iloc[i] < 50.0:
                         i += 1
                     
-                    if i < n: # Salió del bache
+                    if i < n:
                         dias_caido = i - bache_inicio
                         if dias_caido == 1:
-                            puntajes_rec.append(100) # Rebote perfecto al día siguiente
+                            puntajes_rec.append(100)
                         elif dias_caido == 2:
-                            puntajes_rec.append(40)  # Tardó dos días
+                            puntajes_rec.append(40)
                         else:
-                            puntajes_rec.append(0)   # Racha larga de abandono
+                            puntajes_rec.append(0)
                     else:
-                        # Se quedó en el bache y nunca se recuperó
                         puntajes_rec.append(0)
                 else:
                     i += 1
             
             recovery_val = "100%" if not puntajes_rec else f"{np.mean(puntajes_rec):.0f}%"
             
-            # PUNTO 2: Algoritmo de Estabilidad Ultra Sensible a Volatilidad y Variaciones Drásticas
             if len(rendimiento_diario) >= 2:
                 desviacion_estandar = np.std(rendimiento_diario)
                 diferencias_consecutivas = np.abs(np.diff(rendimiento_diario))
                 promedio_saltos = np.mean(diferencias_consecutivas)
-                
-                # Multiplicamos penalizaciones para que la inestabilidad de picos quiebre el score alto
                 stability_score = max(0.0, 100.0 - (desviacion_estandar * 1.6 + promedio_saltos * 0.9))
             else:
                 stability_score = 100.0
@@ -317,7 +304,6 @@ with menu[1]:
         rec_num = float(recovery_val.replace('%','')) if "%" in recovery_val else 100
         stab_num = float(stability_val.replace('%','')) if "%" in stability_val else 100
         
-        # Lógica de mensajes realista basada en los nuevos scores ajustados
         if rec_num >= 80:
             st.info("📌 Capacidad de Rebote: Excelente. No permitís que un troiezo se convierta en una racha de abandono.")
         elif rec_num >= 50:
@@ -371,66 +357,47 @@ with menu[1]:
 # PESTAÑA 3: PATRONES Y MOTIVOS DE FALLO
 with menu[2]:
     if total_dias_sistema < 7:
-        st.info("💡 Necesitás registrar al menos 7 días para que las estadísticas de patrones sean significativas.")
+        st.info("💡 Necesitas registrar al menos 7 días para que las estadísticas de patrones sean significativas.")
     else:
         st.subheader("Análisis Inteligente de Obstáculos")
         
-        # PUNTO 1: Mostrar detalladamente las razones de fallo guardadas
+        # 1. Filtrar los fallos reales quitando los descansos planificados
         if not df_obstaculos.empty:
-            mapeo_nombres = {
-                'ENERGIA': '⚡ Energía / Cansancio', 
-                'TIEMPO': '⏰ Logística / Tiempos', 
-                'DOMINO': '🔗 Efecto Dominó', 
-                'ENTORNO': '📦 Entorno Inadecuado', 
-                'DESCANSO': '🏖️ Descanso Planificado',
-                'OTRA': '📝 Razones Varias'
-            }
-            
-            df_plot_obs = df_obstaculos.copy()
-            df_plot_obs['Motivo_Visual'] = df_plot_obs['Categoria_Fallo'].map(mapeo_nombres)
-            conteos = df_plot_obs['Motivo_Visual'].value_counts()
-            
-            st.markdown("#### 📊 Distribución de tus Causas de Incumplimiento")
-            fig_obs, ax_obs = plt.subplots(figsize=(8, 4))
-            sns.barplot(x=conteos.values, y=conteos.index, palette="Oranges_r", ax=ax_obs, edgecolor="black")
-            ax_obs.set_xlabel("Cantidad de veces reportado")
-            st.pyplot(fig_obs)
-            
-            # Criptonita real sin contar los descansos
             df_fallos_reales = df_obstaculos[df_obstaculos['Categoria_Fallo'] != 'DESCANSO']
-          #  ESTO ES LO QUE ENTRA EN SU LUGAR:
-df_fallos_reales = df_obstaculos[df_obstaculos['Categoria_Fallo'] != 'DESCANSO']
-
-if not df_fallos_reales.empty:
-    mapeo_nombres = {
-        'ENERGIA': '⚡ Energía / Cansancio', 
-        'TIEMPO': '⏰ Logística / Tiempos', 
-        'DOMINO': '🔗 Efecto Dominó', 
-        'ENTORNO': '📦 Entorno Inadecuado', 
-        'OTRA': '📝 Razones Varias'
-    }
-    
-    df_plot_obs = df_fallos_reales.copy()
-    df_plot_obs['Motivo_Visual'] = df_plot_obs['Categoria_Fallo'].map(mapeo_nombres)
-    
-    conteos = df_plot_obs['Motivo_Visual'].value_counts()
-    
-    # El filtro estricto que querías:
-    conteos_filtrados = conteos[conteos > 5]
-    
-    if not conteos_filtrados.empty:
-        st.markdown("#### 📊 Patrones Críticos de Incumplimiento (Repetidos más de 5 veces)")
-        fig_obs, ax_obs = plt.subplots(figsize=(8, 4))
-        sns.barplot(x=conteos_filtrados.values, y=conteos_filtrados.index, palette="Oranges_r", ax=ax_obs, edgecolor="black")
-        ax_obs.set_xlabel("Cantidad de veces reportado")
-        st.pyplot(fig_obs)
-        
-        crit_visual = conteos_filtrados.index[0]
-        st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
-    else:
-        st.success("✨ ¡Sin patrones críticos aún!")
-else:
-    st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
+            
+            if not df_fallos_reales.empty:
+                mapeo_nombres = {
+                    'ENERGIA': '⚡ Energía / Cansancio', 
+                    'TIEMPO': '⏰ Logística / Tiempos', 
+                    'DOMINO': '🔗 Efecto Dominó', 
+                    'ENTORNO': '📦 Entorno Inadecuado', 
+                    'OTRA': '📝 Razones Varias'
+                }
+                
+                df_plot_obs = df_fallos_reales.copy()
+                df_plot_obs['Motivo_Visual'] = df_plot_obs['Categoria_Fallo'].map(mapeo_nombres)
+                conteos = df_plot_obs['Motivo_Visual'].value_counts()
+                
+                # Regla estricta: Solo lo que se repite MÁS DE 5 VECES
+                conteos_filtrados = conteos[conteos > 5]
+                
+                if not conteos_filtrados.empty:
+                    st.markdown("#### 📊 Patrones Críticos de Incumplimiento (Repetidos más de 5 veces)")
+                    fig_obs, ax_obs = plt.subplots(figsize=(8, 4))
+                    sns.barplot(x=conteos_filtrados.values, y=conteos_filtrados.index, palette="Oranges_r", ax=ax_obs, edgecolor="black")
+                    ax_obs.set_xlabel("Cantidad de veces reportado")
+                    st.pyplot(fig_obs)
+                    
+                    crit_visual = conteos_filtrados.index[0]
+                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
+                else:
+                    st.success("✨ ¡Sin patrones críticos aún! Has tenido fallos aislados, pero ninguno se repitió más de 5 veces.")
+            else:
+                st.success("💪 ¡Excelente! No se registran baches reales en el historial (solo días de descanso).")
+        else:
+            st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
+            
+        # 2. Matriz de Pearson y correlación
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
         st.markdown("### Mapa de Relaciones de Comportamiento (Pearson)")
         fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
@@ -448,6 +415,6 @@ else:
         if enlaces_fuertes:
             enlaces_fuertes.sort(key=lambda x: x[2], reverse=True)
             for h1, h2, score in enlaces_fuertes:
-                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
+                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está fuertemente relacionado a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
         else:
             st.write("🔍 Tus hábitos se comportan de manera independiente por ahora.")
