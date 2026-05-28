@@ -398,12 +398,39 @@ with menu[2]:
             
             # Criptonita real sin contar los descansos
             df_fallos_reales = df_obstaculos[df_obstaculos['Categoria_Fallo'] != 'DESCANSO']
-            if not df_fallos_reales.empty:
-                crit = df_fallos_reales['Categoria_Fallo'].value_counts().index[0]
-                st.error(f"🚨 Problema detectado: El motivo principal por el que rompés tus rutinas es: {mapeo_nombres[crit]}.")
-        else:
-            st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
-            
+          #  ESTO ES LO QUE ENTRA EN SU LUGAR:
+df_fallos_reales = df_obstaculos[df_obstaculos['Categoria_Fallo'] != 'DESCANSO']
+
+if not df_fallos_reales.empty:
+    mapeo_nombres = {
+        'ENERGIA': '⚡ Energía / Cansancio', 
+        'TIEMPO': '⏰ Logística / Tiempos', 
+        'DOMINO': '🔗 Efecto Dominó', 
+        'ENTORNO': '📦 Entorno Inadecuado', 
+        'OTRA': '📝 Razones Varias'
+    }
+    
+    df_plot_obs = df_fallos_reales.copy()
+    df_plot_obs['Motivo_Visual'] = df_plot_obs['Categoria_Fallo'].map(mapeo_nombres)
+    
+    conteos = df_plot_obs['Motivo_Visual'].value_counts()
+    
+    # El filtro estricto que querías:
+    conteos_filtrados = conteos[conteos > 5]
+    
+    if not conteos_filtrados.empty:
+        st.markdown("#### 📊 Patrones Críticos de Incumplimiento (Repetidos más de 5 veces)")
+        fig_obs, ax_obs = plt.subplots(figsize=(8, 4))
+        sns.barplot(x=conteos_filtrados.values, y=conteos_filtrados.index, palette="Oranges_r", ax=ax_obs, edgecolor="black")
+        ax_obs.set_xlabel("Cantidad de veces reportado")
+        st.pyplot(fig_obs)
+        
+        crit_visual = conteos_filtrados.index[0]
+        st.error(f"🚨 **Tu verdadera Criptonita:** El obstáculo recurrente que más está bloqueando tu progreso es: **{crit_visual}**.")
+    else:
+        st.success("✨ **¡Sin patrones críticos aún!** Has tenido fallos aislados, pero ninguno se ha repetido más de 5 veces. No hay baches sistémicos todavía.")
+else:
+    st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
         st.markdown("### Mapa de Relaciones de Comportamiento (Pearson)")
         fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
