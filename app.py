@@ -426,9 +426,9 @@ if not df_fallos_reales.empty:
         st.pyplot(fig_obs)
         
         crit_visual = conteos_filtrados.index[0]
-        st.error(f"🚨 **Tu verdadera Criptonita:** El obstáculo recurrente que más está bloqueando tu progreso es: **{crit_visual}**.")
+        st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
     else:
-        st.success("✨ **¡Sin patrones críticos aún!** Has tenido fallos aislados, pero ninguno se ha repetido más de 5 veces. No hay baches sistémicos todavía.")
+        st.success("✨ ¡Sin patrones críticos aún!")
 else:
     st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
@@ -448,6 +448,6 @@ else:
         if enlaces_fuertes:
             enlaces_fuertes.sort(key=lambda x: x[2], reverse=True)
             for h1, h2, score in enlaces_fuertes:
-                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está amarrado fuertemente a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
+                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
         else:
             st.write("🔍 Tus hábitos se comportan de manera independiente por ahora.")
