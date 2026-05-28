@@ -120,7 +120,7 @@ if not mis_habitos:
     for i in range(num_habitos):
         st.markdown(f"### Hábito {i+1}")
         col1, col2, col3 = st.columns(3)
-        with col1: h_nom = st.text_input(f"Nombre Hábito {i+1}", key=f"h_n_{i}")
+        with col1: h_nom = st.text_input(f"Hábito {i+1}", key=f"h_n_{i}")
         with col2: h_min = st.text_input(f"Mínimo diario", key=f"h_m_{i}", placeholder="Ej: 30 min")
         with col3: h_frec = st.selectbox(f"Días x Semana", list(range(1, 8)), index=4, key=f"h_f_{i}")
         if h_nom:
@@ -153,7 +153,7 @@ menu = st.tabs(["📝 Registrar Día", "📈 Estadísticas", "🧠 Patrones"])
 # PESTAÑA 1: REGISTRAR DÍA
 with menu[0]:
     st.subheader("Registrar hábitos diarios")
-    fecha_sel = st.date_input("Fecha del registro", value=datetime.now().date(), max_value=datetime.now().date())
+    fecha_sel = st.date_input("Fecha", value=datetime.now().date(), max_value=datetime.now().date())
     
     # Si cambia la fecha del calendario, reseteamos el estado del feedback para que no salte viejo contenido
     if "ultima_fecha_vista" not in st.session_state or st.session_state.ultima_fecha_vista != fecha_sel:
