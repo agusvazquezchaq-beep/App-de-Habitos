@@ -11,11 +11,9 @@ from supabase import create_client, Client
 # =====================================================================
 st.set_page_config(page_title="Tracker de Hábitos Pro", page_icon="🚀", layout="centered")
 
-# Ocultar advertencias visuales de Matplotlib por los emojis
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Conectar con Supabase usando las variables secretas que configuraremos en Streamlit
 @st.cache_resource
 def inicializar_conexion():
     url: str = st.secrets["SUPABASE_URL"]
@@ -29,9 +27,9 @@ except Exception as e:
     st.stop()
 
 # =====================================================================
-# 2. SISTEMA DE USUARIOS (LOGIN / REGISTRO) - TOTALMENTE ENCRIPTADO
+# 2. SISTEMA DE USUARIOS (LOGIN / REGISTRO)
 # =====================================================================
-st.title("🌟 Mi App de Hábitos Segura")
+st.title("🌟 Tracker de Hábitos")
 
 if "usuario" not in st.session_state:
     st.session_state.usuario = None
@@ -61,7 +59,6 @@ if st.session_state.usuario is None:
                 st.error(f"❌ No se pudo crear la cuenta: {e}")
     st.stop()
 
-# Si el usuario está logueado, obtenemos su ID único cifrado
 user_id = st.session_state.usuario.id
 
 if st.sidebar.button("🚪 Cerrar Sesión"):
@@ -70,7 +67,7 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 
 # =====================================================================
-# 3. FUNCIONES DE DESCARGA Y CARGA DESDE SUPABASE (AISLAMIENTO SEGURO)
+# 3. FUNCIONES DE CARGA DESDE SUPABASE
 # =====================================================================
 def cargar_configuracion():
     res = supabase.table("config_habitos").select("*").eq("user_id", user_id).execute()
@@ -92,7 +89,6 @@ def cargar_historial():
         df = pd.DataFrame(filas)
         df.sort_values("Fecha", inplace=True)
         df.reset_index(drop=True, inplace=True)
-        # Recalcular ID de bloques por si acaso
         df['Semana_Id'] = df.index // 7 + 1
         return df
     return pd.DataFrame()
@@ -106,7 +102,6 @@ def cargar_obstaculos():
         return df
     return pd.DataFrame(columns=['Fecha', 'Habito', 'Categoria_Fallo', 'Detalle_Flibre'])
 
-# Descarga de datos en tiempo real para el usuario actual
 mis_habitos = cargar_configuracion()
 df_habitos = cargar_historial()
 df_obstaculos = cargar_obstaculos()
@@ -115,7 +110,7 @@ df_obstaculos = cargar_obstaculos()
 # 4. FORMULARIO DE CONFIGURACIÓN INICIAL
 # =====================================================================
 if not mis_habitos:
-    st.info("👋 ¡Bienvenido! Configura tus hábitos para empezar a medirte sin presiones de calendario.")
+    st.info("👋 ¡Bienvenido! Configura tus hábitos para empezar.")
     nombre_usuario = st.text_input("¿Cómo te llamas?")
     num_habitos = st.slider("¿Cuántos hábitos quieres trackear?", 3, 6, 4)
     
@@ -129,17 +124,20 @@ if not mis_habitos:
         if h_nom:
             dict_nuevos[h_nom] = {"minimo": h_min, "frecuencia": h_frec}
             
-    if st.button("🚀 Guardar Configuración y Empezar"):
+    if st.button("🚀 Guardar configuración y empezar"):
         if not nombre_usuario or len(dict_nuevos) < num_habitos:
             st.error("Por favor completa todos los campos.")
         else:
-            for h, info in dict_novos.items():
+            for h, info in dict_nuevos.items():
                 supabase.table("config_habitos").insert({
                     "user_id": user_id, "habito_nombre": h, "minimo": info["minimo"], "frecuencia": info["frecuencia"]
                 }).execute()
             st.success("¡Configuración guardada de forma segura!")
             st.rerun()
     st.stop()
+
+habitos = list(mis_habitos.keys())
+total_dias_sistema = len(df_habitos)
 
 # =====================================================================
 # 5. INTERFAZ EN PESTAÑAS (OPTIMIZADA PARA CELULAR)
@@ -151,11 +149,10 @@ with menu[0]:
     st.subheader("Registrar hábitos diarios")
     fecha_sel = st.date_input("Fecha del registro", value=datetime.now().date())
     
-    # Comprobar si ya existe registro previo de este día para precargar los checks
     valores_previos = {}
     if not df_habitos.empty and fecha_sel in df_habitos['Fecha'].values:
         fila_prev = df_habitos[df_habitos['Fecha'] == fecha_sel].iloc[0]
-        for h in mis_habitos.keys():
+        for h in habitos:
             valores_previos[h] = True if fila_prev.get(h, 0) == 1 else False
 
     chks = {}
@@ -166,12 +163,12 @@ with menu[0]:
         dias_espanol = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves', 'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
         nombre_dia = dias_espanol[fecha_sel.strftime('%A')]
         
-        datos_json = {h: (1 if chks[h] else 0) for h in mis_habitos.keys()}
+        datos_json = {h: (1 if chks[h] else 0) for h in habitos}
+        total_logrados_hoy = sum(datos_json.values())
         
-        # Guardar o actualizar registro de hábitos en Supabase
+        # Guardar o actualizar registro en Supabase
         res_check = supabase.table("historial_habitos").select("id").eq("user_id", user_id).eq("fecha", str(fecha_sel)).execute()
         
-        # Calcular de forma simulada el bloque de 7 días correspondientes
         if df_habitos.empty:
             sim_semana_id = 1
         elif fecha_sel in df_habitos['Fecha'].values:
@@ -186,12 +183,12 @@ with menu[0]:
         else:
             supabase.table("historial_habitos").insert(payload).execute()
             
-        # Gestionar motivos de hábitos no completados
+        # Eliminar obstáculos antiguos de este día para evitar duplicados
         supabase.table("historial_obstaculos").delete().eq("user_id", user_id).eq("fecha", str(fecha_sel)).execute()
         
         habitos_fallados = [h for h, completado in datos_json.items() if completado == 0]
         if habitos_fallados:
-            st.warning("Detectamos que no completaste algunos hábitos. Para proteger tus analíticas sin culpas, clasifícalos:")
+            st.warning("Detectamos baches en tus objetivos. Clasifica los motivos de forma honesta:")
             for h in habitos_fallados:
                 motivo = st.selectbox(f"Razón para '{h}':", [
                     ('🏖️ Día de descanso', 'DESCANSO'),
@@ -205,13 +202,19 @@ with menu[0]:
                 supabase.table("historial_obstaculos").insert({
                     "user_id": user_id, "fecha": str(fecha_sel), "habito": h, "categoria_fallo": motivo[1], "detalle_flibre": ""
                 }).execute()
-                
-        st.success("🚀 ¡Datos guardados!")
-        st.rerun()
-
-# CÁLCULOS ANALÍTICOS GLOBALES
-habitos = list(mis_habitos.keys())
-total_dias_sistema = len(df_habitos)
+        
+        # --- 🟢 AQUÍ RECUPERAMOS TUS INSIGHTS DIARIOS ORIGINALES ---
+        st.success("🚀 ¡Datos guardados exitosamente!")
+        st.markdown("### 🧠 Tu Feedback Diario:")
+        
+        if total_logrados_hoy == len(habitos):
+            st.balloons()
+            st.success("✨ **¡DÍA PERFECTO!** Has completado absolutamente todo. Estás construyendo una inercia imparable. Camina con orgullo hoy.")
+        elif total_logrados_hoy == 0:
+            st.error("📉 **Día de Cero Absoluto.** Hoy no se pudo cumplir nada, y *está bien*. Mañana la pizarra vuelve a estar en blanco. El verdadero peligro no es fallar un día, sino fallar dos seguidos. Mañana recuperamos.")
+        else:
+            porcentaje = (total_logrados_hoy / len(habitos)) * 100
+            st.info(f"⚖️ **Progreso Equilibrado ({porcentaje:.0f}%):** Cumpliste {total_logrados_hoy} de {len(habitos)} hábitos. No fue perfecto, pero defendiste el día. Mantuviste la consistencia.")
 
 # PESTAÑA 2: ESTADÍSTICAS Y CONTROLES
 with menu[1]:
@@ -223,13 +226,12 @@ with menu[1]:
             fechas_descanso = df_obstaculos[df_obstaculos['Categoria_Fallo'] == 'DESCANSO']['Fecha'].unique()
             df_limpio = df_limpio[~df_limpio['Fecha'].isin(fechas_descanso)]
             
-        # Rendimiento
+        # Rendimiento de Scores
         if df_limpio.empty:
             recovery_val, stability_val = "Invicto", "100%"
         else:
             rendimiento_diario = df_limpio[habitos].mean(axis=1) * 100
             
-            # Algoritmo de recuperación (Recovery Score)
             dias_malos = rendimiento_diario[rendimiento_diario < 50.0].index
             puntajes_rec = []
             for idx in dias_malos:
@@ -248,16 +250,33 @@ with menu[1]:
                 else: puntajes_rec.append(0)
                 
             recovery_val = "Invicto" if not puntajes_rec else f"{np.mean(puntajes_rec):.0f}%"
-            
-            # Estabilidad (Stability Score)
             stability_score = max(0.0, 100.0 - (np.std(rendimiento_diario) * 2.0)) if len(rendimiento_diario) >= 2 else 100.0
             stability_val = f"{stability_score:.0f}%"
             
-        # Renderizado de Tarjetas de Control
         c1, c2, c3 = st.columns(3)
         c1.metric("📅 DÍAS GUARDADOS", f"{total_dias_sistema} días")
         c2.metric("🩹 RECOVERY SCORE", recovery_val)
         c3.metric("⚖️ STABILITY SCORE", stability_val)
+        
+        # --- 🟢 RECUPERAMOS LOS INSIGHTS EXTRAS DE LOS SCORES ---
+        st.markdown("### 📑 Diagnóstico de tu Rendimiento General")
+        
+        # Insight de Recovery
+        if recovery_val == "Invicto":
+            st.info("📌 **Mente Resiliente:** Te recuperas al instante de tus fallos. ¡No dejas que la culpa te paralice!")
+        else:
+            rec_num = float(recovery_val.replace('%',''))
+            if rec_num >= 70:
+                st.info("📌 **Mente Resiliente:** Alta velocidad de rebote ante tropiezos. Corriges el rumbo rápido.")
+            else:
+                st.warning("⚠️ **Alerta de Inercia Negativa:** Te cuesta retomar tus rutinas después de romperlas. Intenta que un día malo nunca se transforme en una racha.")
+
+        # Insight de Stability
+        if len(df_limpio) >= 2:
+            if stability_score >= 75:
+                st.info("📌 **Consistencia de Roca:** Vives en niveles estables y predecibles de rendimiento. Muy bien.")
+            else:
+                st.warning("⚠️ **Montaña Rusa:** Tu nivel es caótico; pasas de 100% a 0% drásticamente de un día para el otro. Busca un mínimo sostenible.")
         
         # Gráficas por bloques de 7 días reales
         st.markdown("### Tu Progreso Real por Etapas de 7 Días")
@@ -298,7 +317,7 @@ with menu[1]:
         
         st.pyplot(fig)
 
-# PESTAÑA 3: PATRONES Y CRIPTONITA
+# PESTAÑA 3: PATRONES
 with menu[2]:
     if total_dias_sistema < 7:
         st.info("💡 Necesitas registrar al menos 7 días para que la Inteligencia de la App empiece a cruzar patrones.")
@@ -311,11 +330,10 @@ with menu[2]:
             mapeo_nombres = {'ENERGIA': '⚡ Energía / Cansancio', 'TIEMPO': '⏰ Logística / Tiempos', 'DOMINO': '🔗 Efecto Dominó', 'ENTORNO': '📦 Entorno', 'OTRA': '📝 Razones Varias'}
             
             principal_criptonita = conteos_fallos.index[0]
-            st.error(f"🚨 **Criptonita Principal:** Tu mayor freno actual es **'{mapeo_nombres.get(principal_criptonita, principal_criptonita)}'**.")
+            st.error(f"🚨 Problema Principal: Tu mayor freno actual es '{mapeo_nombres.get(principal_criptonita, principal_criptonita)}'.")
         else:
             st.success("💪 ¡Increíble! No registras baches reales de motivación u organización todavía.")
             
-        # Matriz de Pearson integrada
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
         st.markdown("### Mapa de Relaciones de Comportamiento")
         fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
