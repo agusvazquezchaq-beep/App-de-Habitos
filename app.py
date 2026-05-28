@@ -147,7 +147,7 @@ menu = st.tabs(["📝 Registrar Día", "📈 Estadísticas", "🧠 Patrones"])
 # PESTAÑA 1: REGISTRAR DÍA
 with menu[0]:
     st.subheader("Registrar hábitos diarios")
-    fecha_sel = st.date_input("Fecha del registro", value=datetime.now().date())
+    fecha_sel = st.date_input("Fecha", value=datetime.now().date())
     
     valores_previos = {}
     if not df_habitos.empty and fecha_sel in df_habitos['Fecha'].values:
