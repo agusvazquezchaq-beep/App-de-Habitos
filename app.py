@@ -261,6 +261,7 @@ with menu[1]:
         else:
             rendimiento_diario = df_limpio[habitos].mean(axis=1) * 100
             
+            # Algoritmo de Recovery Score
             puntajes_rec = []
             i = 0
             n = len(rendimiento_diario)
@@ -285,6 +286,7 @@ with menu[1]:
             
             recovery_val = "100%" if not puntajes_rec else f"{np.mean(puntajes_rec):.0f}%"
             
+            # Algoritmo de Estabilidad
             if len(rendimiento_diario) >= 2:
                 desviacion_estandar = np.std(rendimiento_diario)
                 diferencias_consecutivas = np.abs(np.diff(rendimiento_diario))
@@ -295,36 +297,85 @@ with menu[1]:
             stability_val = f"{stability_score:.0f}%"
             
         c1, c2, c3 = st.columns(3)
-        c1.metric("📅 DÍAS", f"{total_dias_sistema} días")
+        c1.metric("📅 DÍAS REGISTRADOS", f"{total_dias_sistema} días")
         c2.metric("🩹 RECOVERY SCORE", recovery_val)
         c3.metric("⚖️ STABILITY SCORE", stability_val)
         
-        st.markdown("### 📑 Diagnóstico Real de tu Consistencia")
+        # --- Cálculo previo de Éxito Absoluto por Hábito (necesario para la auditoría) ---
+        exito_absoluto = {}
+        for h in habitos:
+            total_logrado = df_habitos[h].sum()
+            meta_esperada = max(1.0, min((mis_habitos[h]['frecuencia'] / 7.0) * total_dias_sistema, total_dias_sistema))
+            exito_absoluto[h] = min((total_logrado / meta_esperada) * 100, 100.0)
+
+        # =====================================================================
+        # 📊 AUDITORÍA EXCLUSIVA CADA 7 DIAS (REGLA SOLICITADA)
+        # =====================================================================
+        st.markdown("---")
+        st.markdown("### 🛠️ Auditoría de Metas Realistas")
         
+        # Evaluamos hábitos en zona crítica (Menos del 40% de éxito)
+        habitos_criticos = [h for h, porc in exito_absoluto.items() if porc < 40.0]
+        
+        # Comprobamos si el total de días es múltiplo de 7 y mayor a cero
+        es_dia_de_auditoria = (total_dias_sistema % 7 == 0) and (total_dias_sistema > 0)
+        
+        if habitos_criticos:
+            if es_dia_de_auditoria:
+                st.error(f"⚠️ **DÍA DE REAJUSTE (Día {total_dias_sistema}):** Tus niveles en {', '.join([f'\"{h}\"' for h in habitos_criticos])} están por debajo del 40% esta semana.")
+                
+                with st.expander("🔄 Abrir Panel de Rediseño Obligatorio", expanded=True):
+                    st.write("El algoritmo detectó un estancamiento estructural. Bajá la exigencia para recuperar la inercia.")
+                    hab_a_modificar = st.selectbox("Seleccioná el hábito a recalibrar:", habitos_criticos)
+                    
+                    col_mod1, col_mod2 = st.columns(2)
+                    with col_mod1:
+                        nuevo_minimo = st.text_input("Nuevo mínimo diario:", value=mis_habitos[hab_a_modificar]['minimo'])
+                    with col_mod2:
+                        nueva_frec = st.slider("Nuevos días por semana:", 1, 7, value=int(mis_habitos[hab_a_modificar]['frecuencia']))
+                    
+                    if st.button(f"Confirmar reajuste para '{hab_a_modificar}'", type="primary"):
+                        supabase.table("config_habitos").update({
+                            "minimo": nuevo_minimo, 
+                            "frecuencia": nueva_frec
+                        }).eq("user_id", user_id).eq("habito_nombre", hab_a_modificar).execute()
+                        
+                        st.success(f"¡Meta de '{hab_a_modificar}' reajustada con éxito!")
+                        st.rerun()
+            else:
+                dias_restantes = 7 - (total_dias_sistema % 7)
+                st.warning(f"📉 Tenés hábitos en estado crítico (<40%), pero el panel de modificación se abrirá al finalizar el bloque actual (en **{dias_restantes} días**, al llegar al día {total_dias_sistema + dias_restantes}). Defendé tus mínimos mientras tanto.")
+        else:
+            st.success("💪 **¡Metas saludables!** Ninguno de tus hábitos bajó del umbral crítico del 40%. Estás manteniendo un ritmo excelente.")
+        
+        st.markdown("---")
+        
+        # Diagnósticos textuales
+        st.markdown("### 📑 Diagnóstico Real de tu Consistencia")
         rec_num = float(recovery_val.replace('%','')) if "%" in recovery_val else 100
         stab_num = float(stability_val.replace('%','')) if "%" in stability_val else 100
         
         if rec_num >= 80:
-            st.info("📌 Capacidad de Rebote: Excelente. No permitís que un troiezo se convierta en una racha de abandono.")
+            st.info("📌 Capacidad de Rebote: Excelente. No permitís que un tropiezo se convierta en una racha de abandono.")
         elif rec_num >= 50:
             st.warning("⚠️ Retorno Demorado: Te toma un par de días reaccionar tras una caída. Rompé la inercia antes usando objetivos mínimos.")
         else:
-            st.error("🚨 Alerta de Abandono Prolongado: Cuando fallás un día, tendés a encadenar baches largos. Tu problema no es caerte, es la parálisis posterior.")
+            st.error("🚨 Alerta de Abandono Prolongado: Cuando fallás un día, tendés a encadenar baches largos.")
 
         if stab_num >= 75:
             st.info("📌 Consistencia de Roca: Tus días son predecibles y estables. Mantienes el control.")
         elif stab_num >= 45:
             st.warning("⚠️ Fluctuación de Energía: Tenés altibajos marcados. Buscá regularizar tus horarios semanales.")
         else:
-            st.error("🚨 Montaña Rusa Absoluta: Pasás del 100% al 0% con facilidad. Este patrón destruye tu fuerza de voluntad. Estabilizá el ritmo aunque signifique bajar tus metas.")
+            st.error("🚨 Montaña Rusa Absoluta: Pasás del 100% al 0% con facilidad. Estabilizá el ritmo aunque signifique bajar tus metas.")
         
+        # Gráficas de Progreso
         st.markdown("### Tu Progreso semanal")
         df_semanal = df_habitos.copy()
         semanas_registradas = sorted(df_semanal['Semana_Id'].unique())
         
         rendimientos_bloques = []
         nombres_bloques = []
-        exito_absoluto = {}
         
         for s in semanas_registradas:
             df_s = df_semanal[df_semanal['Semana_Id'] == s]
@@ -336,11 +387,6 @@ with menu[1]:
                 valores_s.append(min((logrados_s / target_s) * 100, 100.0))
             rendimientos_bloques.append(np.mean(valores_s))
             nombres_bloques.append(f"Bloque {s}")
-            
-        for h in habitos:
-            total_logrado = df_habitos[h].sum()
-            meta_esperada = max(1.0, min((mis_habitos[h]['frecuencia'] / 7.0) * total_dias_sistema, total_dias_sistema))
-            exito_absoluto[h] = min((total_logrado / meta_esperada) * 100, 100.0)
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         ax1.plot(nombres_bloques, rendimientos_bloques, marker='o', linewidth=3, color='#2ECC71')
@@ -357,11 +403,10 @@ with menu[1]:
 # PESTAÑA 3: PATRONES Y MOTIVOS DE FALLO
 with menu[2]:
     if total_dias_sistema < 7:
-        st.info("💡 Necesitas registrar al menos 7 días para que las estadísticas de patrones sean significativas.")
+        st.info("💡 Necesitás registrar al menos 7 días para que las estadísticas de patrones sean significativas.")
     else:
         st.subheader("Análisis Inteligente de Obstáculos")
         
-        # 1. Filtrar los fallos reales quitando los descansos planificados
         if not df_obstaculos.empty:
             df_fallos_reales = df_obstaculos[df_obstaculos['Categoria_Fallo'] != 'DESCANSO']
             
@@ -378,7 +423,7 @@ with menu[2]:
                 df_plot_obs['Motivo_Visual'] = df_plot_obs['Categoria_Fallo'].map(mapeo_nombres)
                 conteos = df_plot_obs['Motivo_Visual'].value_counts()
                 
-                # Regla estricta: Solo lo que se repite MÁS DE 5 VECES
+                # Filtro estricto de más de 5 veces
                 conteos_filtrados = conteos[conteos > 5]
                 
                 if not conteos_filtrados.empty:
@@ -397,7 +442,7 @@ with menu[2]:
         else:
             st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
             
-        # 2. Matriz de Pearson y correlación
+        # Matriz de Pearson
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
         st.markdown("### Mapa de Relaciones de Comportamiento (Pearson)")
         fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
@@ -415,6 +460,6 @@ with menu[2]:
         if enlaces_fuertes:
             enlaces_fuertes.sort(key=lambda x: x[2], reverse=True)
             for h1, h2, score in enlaces_fuertes:
-                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está fuertemente relacionado a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
+                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
         else:
             st.write("🔍 Tus hábitos se comportan de manera independiente por ahora.")
