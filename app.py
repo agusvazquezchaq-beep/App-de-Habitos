@@ -110,7 +110,7 @@ df_habitos = cargar_historial()
 df_obstaculos = cargar_obstaculos()
 
 # =====================================================================
-# 4. FORMULARIO DE CONFIGURACIÓN INICIAL
+# 4. FORMULARIO DE CONFIGURACIÓN INICIAL (Control de usuario nuevo)
 # =====================================================================
 if not mis_habitos:
     st.info("👋 ¡Bienvenido! Configura tus hábitos para empezar.")
@@ -146,19 +146,28 @@ if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
 # =====================================================================
-# 🔥 NUEVO MOTOR DE RACHAS AUTOMÁTICO (BLINDADO Y CONTROLADO)
+# 🔥 MOTOR DE RACHAS TOTALMENTE BLINDADO CONTRA VALORES VACÍOS
 # =====================================================================
 racha_actual = 0
 racha_dias_perfectos = 0
 hoy = datetime.now().date()
 
+# Se ejecuta el cálculo de racha únicamente si el dataframe tiene datos y hay hábitos cargados
 if not df_habitos.empty and len(df_habitos) > 0 and len(habitos) > 0:
     fechas_con_exito = set()
     fechas_perfectas = set()
     
     for _, fila in df_habitos.iterrows():
         fecha_f = fila['Fecha']
-        total_logrados = sum(int(pd.to_numeric(fila.get(h, 0), errors='coerce') or 0) for h in habitos if h in fila)
+        
+        # Validación individual y segura para evitar el ValueError detectado
+        total_logrados = 0
+        for h in habitos:
+            if h in fila and pd.notna(fila[h]):
+                try:
+                    total_logrados += int(pd.to_numeric(fila[h], errors='coerce') or 0)
+                except:
+                    pass
         
         if total_logrados > 0:
             fechas_con_exito.add(fecha_f)
@@ -480,7 +489,7 @@ with menu[2]:
             else:
                 st.success("💪 ¡Excelente! No se registran baches reales en el historial.")
         else:
-            st.success("💪 ¡Excelente! No se registran motivos de baches in el historial actual.")
+            st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
             
         # Matriz de Pearson
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
