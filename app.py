@@ -146,34 +146,57 @@ if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
 # =====================================================================
-# 🔥 MOTOR DE RACHAS TOTALMENTE BLINDADO CONTRA VALORES VACÍOS
+# 🔥 MOTOR DE RACHAS CORREGIDO (CON SOPORTE DE DÍAS DE DESCANSO)
 # =====================================================================
 racha_actual = 0
 racha_dias_perfectos = 0
 hoy = datetime.now().date()
 
-# Se ejecuta el cálculo de racha únicamente si el dataframe tiene datos y hay hábitos cargados
 if not df_habitos.empty and len(df_habitos) > 0 and len(habitos) > 0:
     fechas_con_exito = set()
     fechas_perfectas = set()
     
+    # Agrupamos los obstáculos de descanso por fecha para buscarlos rápido
+    descansos_por_fecha = {}
+    if not df_obstaculos.empty:
+        df_descansos = df_obstaculos[df_obstaculos['Categoria_Fallo'] == 'DESCANSO']
+        for _, obs in df_descansos.iterrows():
+            f_obs = obs['Fecha']
+            if f_obs not in descansos_por_fecha:
+                descansos_por_fecha[f_obs] = set()
+            descansos_por_fecha[f_obs].add(obs['Habito'])
+    
     for _, fila in df_habitos.iterrows():
         fecha_f = fila['Fecha']
+        habitos_descanso_hoy = descansos_por_fecha.get(fecha_f, set())
         
-        # Validación individual y segura para evitar el ValueError detectado
         total_logrados = 0
+        habitos_exigidos_hoy = 0
+        
         for h in habitos:
+            # Si el hábito fue marcado como descanso, no se le exige al usuario hoy
+            if h in habitos_descanso_hoy:
+                continue
+                
+            habitos_exigidos_hoy += 1
             if h in fila and pd.notna(fila[h]):
                 try:
                     total_logrados += int(pd.to_numeric(fila[h], errors='coerce') or 0)
                 except:
                     pass
         
-        if total_logrados > 0:
+        # Al menos un hábito hecho (para la racha activa normal)
+        if total_logrados > 0 or habitos_exigidos_hoy == 0:
             fechas_con_exito.add(fecha_f)
-        if total_logrados == len(habitos):
+            
+        # Cumplió el 100% de lo exigido (para la racha de días perfectos)
+        if habitos_exigidos_hoy > 0 and total_logrados == habitos_exigidos_hoy:
+            fechas_perfectas.add(fecha_f)
+        elif habitos_exigidos_hoy == 0:
+            # Si se tomó descanso en absolutamente todo, cuenta como perfecto por diseño flexible
             fechas_perfectas.add(fecha_f)
             
+    # Cálculo de racha activa general
     fecha_chequeo = hoy
     if fecha_chequeo not in fechas_con_exito and (fecha_chequeo - timedelta(days=1)) in fechas_con_exito:
         fecha_chequeo = hoy - timedelta(days=1)
@@ -182,6 +205,7 @@ if not df_habitos.empty and len(df_habitos) > 0 and len(habitos) > 0:
         racha_actual += 1
         fecha_chequeo -= timedelta(days=1)
         
+    # Cálculo de racha de días perfectos (Ajustada con descansos)
     fecha_chequeo_p = hoy
     if fecha_chequeo_p not in fechas_perfectas and (fecha_chequeo_p - timedelta(days=1)) in fechas_perfectas:
         fecha_chequeo_p = hoy - timedelta(days=1)
@@ -195,7 +219,7 @@ col_r1, col_r2 = st.columns(2)
 with col_r1:
     st.metric("🔥 RACHA ACTIVA", f"{racha_actual} Días", help="Días seguidos cumpliendo al menos 1 hábito.")
 with col_r2:
-    st.metric("⚡ DÍAS PERFECTOS", f"{racha_dias_perfectos} Días", help="Días seguidos haciendo el 100% de tus hábitos.")
+    st.metric("⚡ DÍAS PERFECTOS", f"{racha_dias_perfectos} Días", help="Días seguidos haciendo el 100% de tus hábitos activos (deduciendo descansos).")
 
 st.markdown("---")
 
