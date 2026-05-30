@@ -146,19 +146,19 @@ if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
 # =====================================================================
-# 🔥 NUEVO MOTOR DE RACHAS AUTOMÁTICO (BLINDADO)
+# 🔥 NUEVO MOTOR DE RACHAS AUTOMÁTICO (BLINDADO Y CONTROLADO)
 # =====================================================================
 racha_actual = 0
 racha_dias_perfectos = 0
 hoy = datetime.now().date()
 
-if not df_habitos.empty and len(df_habitos) > 0:
+if not df_habitos.empty and len(df_habitos) > 0 and len(habitos) > 0:
     fechas_con_exito = set()
     fechas_perfectas = set()
     
     for _, fila in df_habitos.iterrows():
         fecha_f = fila['Fecha']
-        total_logrados = sum(int(pd.to_numeric(fila.get(h, 0), errors='coerce') or 0) for h in habitos)
+        total_logrados = sum(int(pd.to_numeric(fila.get(h, 0), errors='coerce') or 0) for h in habitos if h in fila)
         
         if total_logrados > 0:
             fechas_con_exito.add(fecha_f)
@@ -480,7 +480,7 @@ with menu[2]:
             else:
                 st.success("💪 ¡Excelente! No se registran baches reales en el historial.")
         else:
-            st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
+            st.success("💪 ¡Excelente! No se registran motivos de baches in el historial actual.")
             
         # Matriz de Pearson
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
