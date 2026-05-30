@@ -84,7 +84,6 @@ def cargar_historial():
         filas = []
         for r in res.data:
             nueva_fila = {"Fecha": datetime.strptime(r["fecha"], "%Y-%m-%d").date(), "Dia_Nombre": r["dia_nombre"]}
-            # Asegurar que los datos internos vengan como diccionario purificado
             datos_h = r["datos_habitos"] if isinstance(r["datos_habitos"], dict) else {}
             nueva_fila.update(datos_h)
             filas.append(nueva_fila)
@@ -147,7 +146,7 @@ if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
 # =====================================================================
-# 🔥 MOTOR DE RACHAS PROTEGIDO CONTRA HISTORIALES VACÍOS
+# 🔥 NUEVO MOTOR DE RACHAS AUTOMÁTICO (BLINDADO)
 # =====================================================================
 racha_actual = 0
 racha_dias_perfectos = 0
@@ -159,7 +158,6 @@ if not df_habitos.empty and len(df_habitos) > 0:
     
     for _, fila in df_habitos.iterrows():
         fecha_f = fila['Fecha']
-        # Validamos de manera segura que el valor sea numérico estructurado
         total_logrados = sum(int(pd.to_numeric(fila.get(h, 0), errors='coerce') or 0) for h in habitos)
         
         if total_logrados > 0:
@@ -167,7 +165,6 @@ if not df_habitos.empty and len(df_habitos) > 0:
         if total_logrados == len(habitos):
             fechas_perfectas.add(fecha_f)
             
-    # Racha Activa
     fecha_chequeo = hoy
     if fecha_chequeo not in fechas_con_exito and (fecha_chequeo - timedelta(days=1)) in fechas_con_exito:
         fecha_chequeo = hoy - timedelta(days=1)
@@ -176,7 +173,6 @@ if not df_habitos.empty and len(df_habitos) > 0:
         racha_actual += 1
         fecha_chequeo -= timedelta(days=1)
         
-    # Racha Perfecta
     fecha_chequeo_p = hoy
     if fecha_chequeo_p not in fechas_perfectas and (fecha_chequeo_p - timedelta(days=1)) in fechas_perfectas:
         fecha_chequeo_p = hoy - timedelta(days=1)
@@ -185,12 +181,12 @@ if not df_habitos.empty and len(df_habitos) > 0:
         racha_dias_perfectos += 1
         fecha_chequeo_p -= timedelta(days=1)
 
-# Tablero Visual superior
+# Indicadores de Racha en la parte superior
 col_r1, col_r2 = st.columns(2)
 with col_r1:
-    st.metric("🔥 RACHA ACTIVA", f"{racha_actual} Días", help="Días consecutivos haciendo al menos un hábito.")
+    st.metric("🔥 RACHA ACTIVA", f"{racha_actual} Días", help="Días seguidos cumpliendo al menos 1 hábito.")
 with col_r2:
-    st.metric("⚡ DIAS PERFECTOS SEGUIDOS", f"{racha_dias_perfectos} Días", help="Días consecutivos completando el 100% de tus hábitos.")
+    st.metric("⚡ DÍAS PERFECTOS", f"{racha_dias_perfectos} Días", help="Días seguidos haciendo el 100% de tus hábitos.")
 
 st.markdown("---")
 
@@ -351,16 +347,14 @@ with menu[1]:
         c2.metric("🩹 RECOVERY SCORE", recovery_val)
         c3.metric("⚖️ STABILITY SCORE", stability_val)
         
-        # --- Cálculo previo de Éxito Absoluto por Hábito ---
+        # Cálculo de Éxito Absoluto por Hábito
         exito_absolute = {}
         for h in habitos:
             total_logrado = df_habitos[h].sum()
             meta_esperada = max(1.0, min((mis_habitos[h]['frecuencia'] / 7.0) * total_dias_sistema, total_dias_sistema))
             exito_absolute[h] = min((total_logrado / meta_esperada) * 100, 100.0)
 
-        # =====================================================================
-        # 📊 AUDITORÍA EXCLUSIVA CADA 7 DIAS
-        # =====================================================================
+        # Auditoría cada 7 días
         st.markdown("---")
         st.markdown("### 🛠️ Auditoría de Metas Realistas")
         
@@ -397,7 +391,7 @@ with menu[1]:
         
         st.markdown("---")
         
-        # Diagnósticos textuales
+        # Diagnósticos
         st.markdown("### 📑 Diagnóstico Real de tu Consistencia")
         rec_num = float(recovery_val.replace('%','')) if "%" in recovery_val else 100
         stab_num = float(stability_val.replace('%','')) if "%" in stability_val else 100
@@ -480,13 +474,13 @@ with menu[2]:
                     st.pyplot(fig_obs)
                     
                     crit_visual = conteos_filtrados.index[0]
-                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
+                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}")
                 else:
                     st.success("✨ ¡Sin patrones críticos aún! Has tenido fallos aislados.")
             else:
                 st.success("💪 ¡Excelente! No se registran baches reales en el historial.")
         else:
-            st.success("💪 ¡Excelente! No se registran motivos de baches in el historial actual.")
+            st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
             
         # Matriz de Pearson
         corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
