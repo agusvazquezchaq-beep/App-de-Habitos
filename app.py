@@ -480,4 +480,32 @@ with menu[2]:
                     st.pyplot(fig_obs)
                     
                     crit_visual = conteos_filtrados.index[0]
-                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando
+                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
+                else:
+                    st.success("✨ ¡Sin patrones críticos aún! Has tenido fallos aislados.")
+            else:
+                st.success("💪 ¡Excelente! No se registran baches reales en el historial.")
+        else:
+            st.success("💪 ¡Excelente! No se registran motivos de baches in el historial actual.")
+            
+        # Matriz de Pearson
+        corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
+        st.markdown("### Mapa de Relaciones de Comportamiento (Pearson)")
+        fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
+        sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="RdYlGn", vmin=-1, vmax=1, center=0, square=True, cbar=False)
+        st.pyplot(fig_corr)
+        
+        st.markdown("### 🔑 Hábitos clave")
+        enlaces_fuertes = []
+        for i in range(len(habitos)):
+            for j in range(i+1, len(habitos)):
+                val = corr_matrix.iloc[i, j]
+                if val >= 0.55:
+                    enlaces_fuertes.append((habitos[i], habitos[j], val))
+                    
+        if enlaces_fuertes:
+            enlaces_fuertes.sort(key=lambda x: x[2], reverse=True)
+            for h1, h2, score in enlaces_fuertes:
+                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'.")
+        else:
+            st.write("🔍 Tus hábitos se comportan de manera independiente por ahora.")
