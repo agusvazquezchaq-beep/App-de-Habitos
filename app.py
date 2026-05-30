@@ -84,7 +84,9 @@ def cargar_historial():
         filas = []
         for r in res.data:
             nueva_fila = {"Fecha": datetime.strptime(r["fecha"], "%Y-%m-%d").date(), "Dia_Nombre": r["dia_nombre"]}
-            nueva_fila.update(r["datos_habitos"])
+            # Asegurar que los datos internos vengan como diccionario purificado
+            datos_h = r["datos_habitos"] if isinstance(r["datos_habitos"], dict) else {}
+            nueva_fila.update(datos_h)
             filas.append(nueva_fila)
         df = pd.DataFrame(filas)
         df.sort_values("Fecha", inplace=True)
@@ -145,29 +147,28 @@ if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
 # =====================================================================
-# 🔥 NUEVO MOTOR DE RACHAS (CALCULO EN TIEMPO REAL)
+# 🔥 MOTOR DE RACHAS PROTEGIDO CONTRA HISTORIALES VACÍOS
 # =====================================================================
 racha_actual = 0
 racha_dias_perfectos = 0
 hoy = datetime.now().date()
 
-if not df_habitos.empty:
-    # Creamos un set de fechas donde se cumplió al menos un hábito o fue perfecto
+if not df_habitos.empty and len(df_habitos) > 0:
     fechas_con_exito = set()
     fechas_perfectas = set()
     
     for _, fila in df_habitos.iterrows():
         fecha_f = fila['Fecha']
-        total_logrados = sum(int(fila.get(h, 0)) for h in habitos)
+        # Validamos de manera segura que el valor sea numérico estructurado
+        total_logrados = sum(int(pd.to_numeric(fila.get(h, 0), errors='coerce') or 0) for h in habitos)
         
         if total_logrados > 0:
             fechas_con_exito.add(fecha_f)
         if total_logrados == len(habitos):
             fechas_perfectas.add(fecha_f)
             
-    # Calcular Racha Activa (Al menos 1 hábito diario) hacia atrás
+    # Racha Activa
     fecha_chequeo = hoy
-    # Permitir que la racha siga viva si ayer se cumplió, aunque hoy todavía no se haya marcado nada
     if fecha_chequeo not in fechas_con_exito and (fecha_chequeo - timedelta(days=1)) in fechas_con_exito:
         fecha_chequeo = hoy - timedelta(days=1)
         
@@ -175,7 +176,7 @@ if not df_habitos.empty:
         racha_actual += 1
         fecha_chequeo -= timedelta(days=1)
         
-    # Calcular Racha de Días Perfectos hacia atrás
+    # Racha Perfecta
     fecha_chequeo_p = hoy
     if fecha_chequeo_p not in fechas_perfectas and (fecha_chequeo_p - timedelta(days=1)) in fechas_perfectas:
         fecha_chequeo_p = hoy - timedelta(days=1)
@@ -184,7 +185,7 @@ if not df_habitos.empty:
         racha_dias_perfectos += 1
         fecha_chequeo_p -= timedelta(days=1)
 
-# Mostrar el tablero de Rachas de forma muy visual arriba de todo
+# Tablero Visual superior
 col_r1, col_r2 = st.columns(2)
 with col_r1:
     st.metric("🔥 RACHA ACTIVA", f"{racha_actual} Días", help="Días consecutivos haciendo al menos un hábito.")
@@ -351,11 +352,11 @@ with menu[1]:
         c3.metric("⚖️ STABILITY SCORE", stability_val)
         
         # --- Cálculo previo de Éxito Absoluto por Hábito ---
-        exito_absoluto = {}
+        exito_absolute = {}
         for h in habitos:
             total_logrado = df_habitos[h].sum()
             meta_esperada = max(1.0, min((mis_habitos[h]['frecuencia'] / 7.0) * total_dias_sistema, total_dias_sistema))
-            exito_absoluto[h] = min((total_logrado / meta_esperada) * 100, 100.0)
+            exito_absolute[h] = min((total_logrado / meta_esperada) * 100, 100.0)
 
         # =====================================================================
         # 📊 AUDITORÍA EXCLUSIVA CADA 7 DIAS
@@ -363,7 +364,7 @@ with menu[1]:
         st.markdown("---")
         st.markdown("### 🛠️ Auditoría de Metas Realistas")
         
-        habitos_criticos = [h for h, porc in exito_absoluto.items() if porc < 40.0]
+        habitos_criticos = [h for h, porc in exito_absolute.items() if porc < 40.0]
         es_dia_de_auditoria = (total_dias_sistema % 7 == 0) and (total_dias_sistema > 0)
         
         if habitos_criticos:
@@ -440,8 +441,8 @@ with menu[1]:
         ax1.set_title('Evolución por Bloques de 7 Días Reales', fontweight='bold')
         ax1.set_ylim(0, 110)
         
-        colores_barras = ['#2ECC71' if v >= 50 else '#E74C3C' for v in exito_absoluto.values()]
-        ax2.barh(list(exito_absoluto.keys()), list(exito_absoluto.values()), color=colores_barras, edgecolor='black')
+        colores_barras = ['#2ECC71' if v >= 50 else '#E74C3C' for v in exito_absolute.values()]
+        ax2.barh(list(exito_absolute.keys()), list(exito_absolute.values()), color=colores_barras, edgecolor='black')
         ax2.set_title('% de Éxito Absoluto por Hábito', fontweight='bold')
         ax2.set_xlim(0, 105)
         st.pyplot(fig)
@@ -479,32 +480,4 @@ with menu[2]:
                     st.pyplot(fig_obs)
                     
                     crit_visual = conteos_filtrados.index[0]
-                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
-                else:
-                    st.success("✨ ¡Sin patrones críticos aún! Has tenido fallos aislados.")
-            else:
-                st.success("💪 ¡Excelente! No se registran baches reales en el historial.")
-        else:
-            st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
-            
-        # Matriz de Pearson
-        corr_matrix = df_habitos[habitos].astype(float).corr(method='pearson').fillna(0)
-        st.markdown("### Mapa de Relaciones de Comportamiento (Pearson)")
-        fig_corr, ax_corr = plt.subplots(figsize=(6, 4))
-        sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="RdYlGn", vmin=-1, vmax=1, center=0, square=True, cbar=False)
-        st.pyplot(fig_corr)
-        
-        st.markdown("### 🔑 Hábitos clave")
-        enlaces_fuertes = []
-        for i in range(len(habitos)):
-            for j in range(i+1, len(habitos)):
-                val = corr_matrix.iloc[i, j]
-                if val >= 0.55:
-                    enlaces_fuertes.append((habitos[i], habitos[j], val))
-                    
-        if enlaces_fuertes:
-            enlaces_fuertes.sort(key=lambda x: x[2], reverse=True)
-            for h1, h2, score in enlaces_fuertes:
-                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'.")
-        else:
-            st.write("🔍 Tus hábitos se comportan de manera independiente por ahora.")
+                    st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando
