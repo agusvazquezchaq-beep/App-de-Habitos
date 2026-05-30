@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime
+from datetime import datetime, timedelta
 from supabase import create_client, Client
 
 # =====================================================================
@@ -145,6 +145,55 @@ if "mostrar_feedback" not in st.session_state:
     st.session_state.mostrar_feedback = False
 
 # =====================================================================
+# 🔥 NUEVO MOTOR DE RACHAS (CALCULO EN TIEMPO REAL)
+# =====================================================================
+racha_actual = 0
+racha_dias_perfectos = 0
+hoy = datetime.now().date()
+
+if not df_habitos.empty:
+    # Creamos un set de fechas donde se cumplió al menos un hábito o fue perfecto
+    fechas_con_exito = set()
+    fechas_perfectas = set()
+    
+    for _, fila in df_habitos.iterrows():
+        fecha_f = fila['Fecha']
+        total_logrados = sum(int(fila.get(h, 0)) for h in habitos)
+        
+        if total_logrados > 0:
+            fechas_con_exito.add(fecha_f)
+        if total_logrados == len(habitos):
+            fechas_perfectas.add(fecha_f)
+            
+    # Calcular Racha Activa (Al menos 1 hábito diario) hacia atrás
+    fecha_chequeo = hoy
+    # Permitir que la racha siga viva si ayer se cumplió, aunque hoy todavía no se haya marcado nada
+    if fecha_chequeo not in fechas_con_exito and (fecha_chequeo - timedelta(days=1)) in fechas_con_exito:
+        fecha_chequeo = hoy - timedelta(days=1)
+        
+    while fecha_chequeo in fechas_con_exito:
+        racha_actual += 1
+        fecha_chequeo -= timedelta(days=1)
+        
+    # Calcular Racha de Días Perfectos hacia atrás
+    fecha_chequeo_p = hoy
+    if fecha_chequeo_p not in fechas_perfectas and (fecha_chequeo_p - timedelta(days=1)) in fechas_perfectas:
+        fecha_chequeo_p = hoy - timedelta(days=1)
+        
+    while fecha_chequeo_p in fechas_perfectas:
+        racha_dias_perfectos += 1
+        fecha_chequeo_p -= timedelta(days=1)
+
+# Mostrar el tablero de Rachas de forma muy visual arriba de todo
+col_r1, col_r2 = st.columns(2)
+with col_r1:
+    st.metric("🔥 RACHA ACTIVA", f"{racha_actual} Días", help="Días consecutivos haciendo al menos un hábito.")
+with col_r2:
+    st.metric("⚡ DIAS PERFECTOS SEGUIDOS", f"{racha_dias_perfectos} Días", help="Días consecutivos completando el 100% de tus hábitos.")
+
+st.markdown("---")
+
+# =====================================================================
 # 5. INTERFAZ EN PESTAÑAS
 # =====================================================================
 menu = st.tabs(["📝 Registrar Día", "📈 Estadísticas", "🧠 Patrones"])
@@ -225,18 +274,18 @@ with menu[0]:
             st.balloons()
             st.success("✨ ¡DÍA PERFECTO! Completaste el 100% real de tus metas. ¡A mantener esa racha!")
         elif total_logrados_hoy == 0 and descansos_hoy == 0:
-            st.error("📉 Día de Cero Absoluto. No conseguiste ningún hábito hoy. Mañana tenés la oportunidad de volver a empezar. Lo importante es volver cuanto antes.")
+            st.error("📉 Día de Cero Absoluto. No conseguiste ningún hábito hoy. Mañana tienes la oportunidad de volver a empezar.")
         else:
             porcentaje_ajustado = (total_logrados_hoy / habitos_activos) * 100
             if porcentaje_ajustado >= 100:
                 st.balloons()
                 st.success(f"🔥 ¡Meta Ajustada Lograda! ({porcentaje_ajustado:.0f}%) Cumpliste todo lo activo ({total_logrados_hoy}/{habitos_activos}).")
             elif porcentaje_ajustado >= 75:
-                st.success(f"⚡ ¡Excelente Esfuerzo! ({porcentaje_ajustado:.0f}%) Te faltó un empujoncito para el día perfecto.")
+                st.success(f"⚡ ¡Excelente Esfuerzo! ({porcentaje_ajustado:.0f}%) Te faltó un empujoncito.")
             elif porcentaje_ajustado >= 40:
-                st.info(f"⚖️ Rendimiento Regular ({porcentaje_ajustado:.0f}%): Cumpliste {total_logrados_hoy} hábitos. Bien hecho. ¡A seguir mejorando!")
+                st.info(f"⚖️ Rendimiento Regular ({porcentaje_ajustado:.0f}%): Cumpliste {total_logrados_hoy} hábitos.")
             else:
-                st.warning(f"⚠️ Zona de Peligro ({porcentaje_ajustado:.0f}%): Nivel muy bajo ({total_logrados_hoy}/{habitos_activos}). Estuvo cerca. Bien hecho, al menos apareciste. Intenta mejorar mañana.")
+                st.warning(f"⚠️ Zona de Peligro ({porcentaje_ajustado:.0f}%): Nivel muy bajo ({total_logrados_hoy}/{habitos_activos}).")
 
 # PESTAÑA 2: ESTADÍSTICAS Y CONTROLES
 with menu[1]:
@@ -301,7 +350,7 @@ with menu[1]:
         c2.metric("🩹 RECOVERY SCORE", recovery_val)
         c3.metric("⚖️ STABILITY SCORE", stability_val)
         
-        # --- Cálculo previo de Éxito Absoluto por Hábito (necesario para la auditoría) ---
+        # --- Cálculo previo de Éxito Absoluto por Hábito ---
         exito_absoluto = {}
         for h in habitos:
             total_logrado = df_habitos[h].sum()
@@ -309,15 +358,12 @@ with menu[1]:
             exito_absoluto[h] = min((total_logrado / meta_esperada) * 100, 100.0)
 
         # =====================================================================
-        # 📊 AUDITORÍA EXCLUSIVA CADA 7 DIAS (REGLA SOLICITADA)
+        # 📊 AUDITORÍA EXCLUSIVA CADA 7 DIAS
         # =====================================================================
         st.markdown("---")
         st.markdown("### 🛠️ Auditoría de Metas Realistas")
         
-        # Evaluamos hábitos en zona crítica (Menos del 40% de éxito)
         habitos_criticos = [h for h, porc in exito_absoluto.items() if porc < 40.0]
-        
-        # Comprobamos si el total de días es múltiplo de 7 y mayor a cero
         es_dia_de_auditoria = (total_dias_sistema % 7 == 0) and (total_dias_sistema > 0)
         
         if habitos_criticos:
@@ -325,7 +371,7 @@ with menu[1]:
                 st.error(f"⚠️ **DÍA DE REAJUSTE (Día {total_dias_sistema}):** Tus niveles en {', '.join([f'\"{h}\"' for h in habitos_criticos])} están por debajo del 40% esta semana.")
                 
                 with st.expander("🔄 Abrir Panel de Rediseño Obligatorio", expanded=True):
-                    st.write("El algoritmo detectó un estancamiento estructural. Bajá la exigencia para recuperar la inercia.")
+                    st.write("El algoritmo detectó un estancamiento estructural. Bajá la exigencia.")
                     hab_a_modificar = st.selectbox("Seleccioná el hábito a recalibrar:", habitos_criticos)
                     
                     col_mod1, col_mod2 = st.columns(2)
@@ -344,9 +390,9 @@ with menu[1]:
                         st.rerun()
             else:
                 dias_restantes = 7 - (total_dias_sistema % 7)
-                st.warning(f"📉 Tenés hábitos en estado crítico (<40%), pero el panel de modificación se abrirá al finalizar el bloque actual (en **{dias_restantes} días**, al llegar al día {total_dias_sistema + dias_restantes}). Defendé tus mínimos mientras tanto.")
+                st.warning(f"📉 Tenés hábitos en estado crítico (<40%), pero el panel se abrirá al finalizar el bloque (en **{dias_restantes} días**, al llegar al día {total_dias_sistema + dias_restantes}).")
         else:
-            st.success("💪 **¡Metas saludables!** Ninguno de tus hábitos bajó del umbral crítico del 40%. Estás manteniendo un ritmo excelente.")
+            st.success("💪 **¡Metas saludables!** Ninguno de tus hábitos bajó del umbral crítico del 40%.")
         
         st.markdown("---")
         
@@ -358,16 +404,16 @@ with menu[1]:
         if rec_num >= 80:
             st.info("📌 Capacidad de Rebote: Excelente. No permitís que un tropiezo se convierta en una racha de abandono.")
         elif rec_num >= 50:
-            st.warning("⚠️ Retorno Demorado: Te toma un par de días reaccionar tras una caída. Rompé la inercia antes usando objetivos mínimos.")
+            st.warning("⚠️ Retorno Demorado: Te toma un par de días reaccionar tras una caída.")
         else:
             st.error("🚨 Alerta de Abandono Prolongado: Cuando fallás un día, tendés a encadenar baches largos.")
 
         if stab_num >= 75:
-            st.info("📌 Consistencia de Roca: Tus días son predecibles y estables. Mantienes el control.")
+            st.info("📌 Consistencia de Roca: Tus días son predecibles y estables.")
         elif stab_num >= 45:
-            st.warning("⚠️ Fluctuación de Energía: Tenés altibajos marcados. Buscá regularizar tus horarios semanales.")
+            st.warning("⚠️ Fluctuación de Energía: Tenés altibajos marcados.")
         else:
-            st.error("🚨 Montaña Rusa Absoluta: Pasás del 100% al 0% con facilidad. Estabilizá el ritmo aunque signifique bajar tus metas.")
+            st.error("🚨 Montaña Rusa Absoluta: Pasás del 100% al 0% con facilidad.")
         
         # Gráficas de Progreso
         st.markdown("### Tu Progreso semanal")
@@ -423,7 +469,6 @@ with menu[2]:
                 df_plot_obs['Motivo_Visual'] = df_plot_obs['Categoria_Fallo'].map(mapeo_nombres)
                 conteos = df_plot_obs['Motivo_Visual'].value_counts()
                 
-                # Filtro estricto de más de 5 veces
                 conteos_filtrados = conteos[conteos > 5]
                 
                 if not conteos_filtrados.empty:
@@ -436,9 +481,9 @@ with menu[2]:
                     crit_visual = conteos_filtrados.index[0]
                     st.error(f"🚨 Problema detectado: El obstáculo recurrente que más está bloqueando tu progreso es: {crit_visual}.")
                 else:
-                    st.success("✨ ¡Sin patrones críticos aún! Has tenido fallos aislados, pero ninguno se repitió más de 5 veces.")
+                    st.success("✨ ¡Sin patrones críticos aún! Has tenido fallos aislados.")
             else:
-                st.success("💪 ¡Excelente! No se registran baches reales en el historial (solo días de descanso).")
+                st.success("💪 ¡Excelente! No se registran baches reales en el historial.")
         else:
             st.success("💪 ¡Excelente! No se registran motivos de baches en el historial actual.")
             
@@ -460,6 +505,6 @@ with menu[2]:
         if enlaces_fuertes:
             enlaces_fuertes.sort(key=lambda x: x[2], reverse=True)
             for h1, h2, score in enlaces_fuertes:
-                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'. Intenta hacer el primero para lograr el segundo de una manera más fácil.")
+                st.info(f"🎯 Sinergia ({score:.2f}): El hábito '{h1}' está relacionado fuertemente a '{h2}'.")
         else:
             st.write("🔍 Tus hábitos se comportan de manera independiente por ahora.")
